@@ -13,6 +13,7 @@ const COLOR_HEAD = '#7f7';
 const COLOR_BODY = '#3a3';
 const COLOR_FOOD = '#f55';
 const SCORE_PER_FOOD = 10;
+const BEST_SCORE_KEY = 'snakeBestScore';
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
@@ -90,6 +91,25 @@ const step = () => {
   return true;
 };
 
+// localStorage에서 최고 점수를 읽는다 (접근 실패나 잘못된 값이면 0)
+const loadBestScore = () => {
+  try {
+    const value = Number(localStorage.getItem(BEST_SCORE_KEY));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch (e) {
+    return 0;
+  }
+};
+
+// 최고 점수를 localStorage에 저장 (접근 실패는 무시)
+const saveBestScore = (value) => {
+  try {
+    localStorage.setItem(BEST_SCORE_KEY, String(value));
+  } catch (e) {
+    // 저장소 접근이 막혀도 게임은 계속 동작
+  }
+};
+
 // 점수·최고 점수·경과시간(mm:ss)을 화면에 갱신
 const updateHud = () => {
   const sec = Math.floor(((endTime ?? Date.now()) - startTime) / 1000);
@@ -124,7 +144,10 @@ const showOverlay = (title, info, buttons) => {
 const endGame = (cleared) => {
   state = 'over';
   endTime = Date.now();
-  if (score > bestScore) bestScore = score;
+  if (score > bestScore) {
+    bestScore = score;
+    saveBestScore(bestScore);
+  }
   updateHud();
   showOverlay(cleared ? 'CLEAR' : 'GAME OVER', 'SCORE ' + score,
     [['Retry', startGame], ['Exit', showStart]]);
@@ -173,7 +196,7 @@ const showStart = () => {
 let state = 'ready'; // ready | playing | over
 let tickTimer = null;
 let score = 0;
-let bestScore = 0; // 새로고침 전까지만 유지
+let bestScore = loadBestScore(); // localStorage에서 복원
 let startTime = Date.now();
 let endTime = Date.now();
 let food = null;

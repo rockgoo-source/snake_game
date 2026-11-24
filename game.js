@@ -1,6 +1,9 @@
 const BOARD_SIZE = 20;
 const CELL_SIZE = 24;
-const TICK_MS = 150;
+const TICK_MS = 150; // 시작 틱 간격 (최대 느린 속도)
+const MIN_TICK_MS = 60; // 틱 간격 하한
+const TICK_STEP_MS = 10; // 속도 단계마다 줄어드는 간격
+const SCORE_PER_SPEED_STEP = 50; // 속도가 한 단계 빨라지는 점수 간격
 const INITIAL_SNAKE = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
@@ -153,12 +156,16 @@ const endGame = (cleared) => {
     [['Retry', startGame], ['Exit', showStart]]);
 };
 
+// 현재 점수에 맞는 틱 간격(ms)을 계산 (50점마다 10ms 감소, 60ms 하한)
+const getTickMs = () =>
+  Math.max(MIN_TICK_MS, TICK_MS - TICK_STEP_MS * Math.floor(score / SCORE_PER_SPEED_STEP));
+
 // 틱 루프: setTimeout 재귀로 반복 (충돌하거나 칸이 가득 차면 종료)
 const tick = () => {
   const alive = step();
   draw();
   updateHud();
-  if (alive && food) tickTimer = setTimeout(tick, TICK_MS);
+  if (alive && food) tickTimer = setTimeout(tick, getTickMs());
   else endGame(alive);
 };
 

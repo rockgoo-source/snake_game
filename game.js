@@ -1,10 +1,15 @@
-const BOARD_SIZE = 20;
+const BOARD_SIZE = 10;
 const CELL_SIZE = 24;
 const TICK_MS = 150; // 시작 틱 간격 (최대 느린 속도)
 const MIN_TICK_MS = 60; // 틱 간격 하한
 const TICK_STEP_MS = 10; // 속도 단계마다 줄어드는 간격
 const SCORE_PER_SPEED_STEP = 50; // 속도가 한 단계 빨라지는 점수 간격
-const INITIAL_SNAKE = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+const START_POS = Math.floor(BOARD_SIZE / 2); // 보드 중앙 좌표 (20칸이면 10)
+const INITIAL_SNAKE = [
+  { x: START_POS, y: START_POS },
+  { x: START_POS - 1, y: START_POS },
+  { x: START_POS - 2, y: START_POS }
+];
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
   ArrowUp: { x: 0, y: -1 }, KeyW: { x: 0, y: -1 },

@@ -10,7 +10,7 @@
 - 렌더링은 Canvas 2D API 사용
 - ES6+ 문법 사용 (const/let, 화살표 함수)
 - 지원 환경은 데스크톱 크롬
-- 칸 24px, 캔버스 240x240 (10x10 기준), devicePixelRatio 대응
+- 칸 24px, 캔버스 240x240 (10x10 기준, 3차부터 난이도별 5x5~15x15, 최대 360px), devicePixelRatio 대응
 - 버튼(Play / Retry / Exit)은 Canvas 위 HTML 오버레이로 구현
 
 ### 구현 시 주의

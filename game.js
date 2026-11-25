@@ -1,15 +1,13 @@
-const BOARD_SIZE = 10;
 const CELL_SIZE = 24;
-const TICK_MS = 150; // 시작 틱 간격 (최대 느린 속도)
-const MIN_TICK_MS = 60; // 틱 간격 하한
-const TICK_STEP_MS = 10; // 속도 단계마다 줄어드는 간격
-const SCORE_PER_SPEED_STEP = 50; // 속도가 한 단계 빨라지는 점수 간격
-const START_POS = Math.floor(BOARD_SIZE / 2); // 보드 중앙 좌표 (20칸이면 10)
-const INITIAL_SNAKE = [
-  { x: START_POS, y: START_POS },
-  { x: START_POS - 1, y: START_POS },
-  { x: START_POS - 2, y: START_POS }
-];
+const DIFFICULTY = {
+  easy: { label: 'Easy', boardSize: 6, tickMs: 250, tickStepMs: 5, minTickMs: 110, foodScore: 10 },
+  normal: { label: 'Normal', boardSize: 10, tickMs: 150, tickStepMs: 10, minTickMs: 60, foodScore: 15 },
+  hard: { label: 'Hard', boardSize: 16, tickMs: 120, tickStepMs: 10, minTickMs: 50, foodScore: 20 }
+};
+const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순서
+const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
+const FOODS_PER_SPEED_STEP = 5; // 속도가 한 단계 빨라지는 먹이 개수
+const SNAKE_START_LENGTH = 3;
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
   ArrowUp: { x: 0, y: -1 }, KeyW: { x: 0, y: -1 },
@@ -20,19 +18,27 @@ const KEY_DIRS = {
 const COLOR_HEAD = '#7f7';
 const COLOR_BODY = '#3a3';
 const COLOR_FOOD = '#f55';
-const SCORE_PER_FOOD = 10;
-const BEST_SCORE_KEY = 'snakeBestScore';
+const BEST_SCORE_KEY_PREFIX = 'snakeBestScore_'; // 난이도별 키: 접두사 + 난이도
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 
-let snake = INITIAL_SNAKE.map(c => ({ ...c }));
+let level = DEFAULT_LEVEL; // 현재 난이도 키
+let config = DIFFICULTY[level]; // 현재 난이도 설정
+let boardSize = config.boardSize;
+let snake = [];
 let appliedDir = INITIAL_DIR; // 직전 틱에 실제 적용된 방향
 let pendingDir = INITIAL_DIR; // 다음 틱에 적용할 방향
 
-// 캔버스 크기를 devicePixelRatio에 맞게 설정
+// 보드 중앙에서 오른쪽을 향하는 길이 3 뱀을 새로 만든다
+const createSnake = () => {
+  const center = Math.floor(boardSize / 2);
+  return Array.from({ length: SNAKE_START_LENGTH }, (_, i) => ({ x: center - i, y: center }));
+};
+
+// 캔버스 크기를 현재 보드 크기와 devicePixelRatio에 맞게 설정
 const setupCanvas = () => {
-  const size = BOARD_SIZE * CELL_SIZE;
+  const size = boardSize * CELL_SIZE;
   const dpr = window.devicePixelRatio || 1;
   canvas.style.width = size + 'px';
   canvas.style.height = size + 'px';
@@ -43,7 +49,7 @@ const setupCanvas = () => {
 
 // 먹이와 뱀을 화면에 그린다
 const draw = () => {
-  ctx.clearRect(0, 0, BOARD_SIZE * CELL_SIZE, BOARD_SIZE * CELL_SIZE);
+  ctx.clearRect(0, 0, boardSize * CELL_SIZE, boardSize * CELL_SIZE);
   if (food) {
     ctx.fillStyle = COLOR_FOOD;
     ctx.fillRect(food.x * CELL_SIZE + 3, food.y * CELL_SIZE + 3, CELL_SIZE - 6, CELL_SIZE - 6);
@@ -67,8 +73,8 @@ const handleKey = (e) => {
 // 뱀이 차지하지 않은 빈 칸 중 무작위 위치를 반환 (빈 칸이 없으면 null)
 const spawnFood = () => {
   const empty = [];
-  for (let y = 0; y < BOARD_SIZE; y++) {
-    for (let x = 0; x < BOARD_SIZE; x++) {
+  for (let y = 0; y < boardSize; y++) {
+    for (let x = 0; x < boardSize; x++) {
       if (!snake.some(c => c.x === x && c.y === y)) empty.push({ x, y });
     }
   }
@@ -77,12 +83,12 @@ const spawnFood = () => {
 
 // 새 머리 위치가 벽이거나 몸통이면 true (먹지 않는 틱엔 비워지는 꼬리 칸은 제외)
 const isCollision = (newHead, eating) => {
-  if (newHead.x < 0 || newHead.x >= BOARD_SIZE || newHead.y < 0 || newHead.y >= BOARD_SIZE) return true;
+  if (newHead.x < 0 || newHead.x >= boardSize || newHead.y < 0 || newHead.y >= boardSize) return true;
   const body = eating ? snake : snake.slice(0, -1);
   return body.some(c => c.x === newHead.x && c.y === newHead.y);
 };
 
-// 한 틱: 방향 확정 후 충돌이면 false, 아니면 이동(먹으면 꼬리 유지·점수 +10·새 먹이)하고 true
+// 한 틱: 방향 확정 후 충돌이면 false, 아니면 이동(먹으면 꼬리 유지·난이도별 점수·새 먹이)하고 true
 const step = () => {
   appliedDir = pendingDir;
   const head = snake[0];
@@ -91,7 +97,8 @@ const step = () => {
   if (isCollision(newHead, eating)) return false;
   snake.unshift(newHead);
   if (eating) {
-    score += SCORE_PER_FOOD;
+    score += config.foodScore;
+    foodsEaten++;
     food = spawnFood();
   } else {
     snake.pop();
@@ -99,20 +106,20 @@ const step = () => {
   return true;
 };
 
-// localStorage에서 최고 점수를 읽는다 (접근 실패나 잘못된 값이면 0)
-const loadBestScore = () => {
+// localStorage에서 해당 난이도의 최고 점수를 읽는다 (접근 실패나 잘못된 값이면 0)
+const loadBestScore = (key) => {
   try {
-    const value = Number(localStorage.getItem(BEST_SCORE_KEY));
+    const value = Number(localStorage.getItem(BEST_SCORE_KEY_PREFIX + key));
     return Number.isFinite(value) && value > 0 ? value : 0;
   } catch (e) {
     return 0;
   }
 };
 
-// 최고 점수를 localStorage에 저장 (접근 실패는 무시)
+// 현재 난이도의 최고 점수를 localStorage에 저장 (접근 실패는 무시)
 const saveBestScore = (value) => {
   try {
-    localStorage.setItem(BEST_SCORE_KEY, String(value));
+    localStorage.setItem(BEST_SCORE_KEY_PREFIX + level, String(value));
   } catch (e) {
     // 저장소 접근이 막혀도 게임은 계속 동작
   }
@@ -123,7 +130,7 @@ const updateHud = () => {
   const sec = Math.floor(((endTime ?? Date.now()) - startTime) / 1000);
   const pad = (n) => String(n).padStart(2, '0');
   scoreEl.textContent = score;
-  bestEl.textContent = bestScore;
+  bestEl.textContent = bestScore ?? '-'; // 난이도 선택 전에는 '-'
   timeEl.textContent = pad(Math.floor(sec / 60)) + ':' + pad(sec % 60);
 };
 
@@ -158,12 +165,13 @@ const endGame = (cleared) => {
   }
   updateHud();
   showOverlay(cleared ? 'CLEAR' : 'GAME OVER', 'SCORE ' + score,
-    [['Retry', startGame], ['Exit', showStart]]);
+    [['Retry', () => startGame(level)], ['Exit', showStart]]);
 };
 
-// 현재 점수에 맞는 틱 간격(ms)을 계산 (50점마다 10ms 감소, 60ms 하한)
+// 먹은 먹이 개수에 맞는 틱 간격(ms)을 계산 (난이도별 단계 감소, 하한 적용)
 const getTickMs = () =>
-  Math.max(MIN_TICK_MS, TICK_MS - TICK_STEP_MS * Math.floor(score / SCORE_PER_SPEED_STEP));
+  Math.max(config.minTickMs,
+    config.tickMs - config.tickStepMs * Math.floor(foodsEaten / FOODS_PER_SPEED_STEP));
 
 // 틱 루프: setTimeout 재귀로 반복 (충돌하거나 칸이 가득 차면 종료)
 const tick = () => {
@@ -174,13 +182,24 @@ const tick = () => {
   else endGame(alive);
 };
 
-// 모든 상태를 초기화하고 즉시 새 게임을 시작 (Play / Retry 공통)
-const startGame = () => {
+// 난이도를 적용한다 (보드 크기, 캔버스, 해당 난이도 최고 점수)
+const applyLevel = (key) => {
+  level = key;
+  config = DIFFICULTY[key];
+  boardSize = config.boardSize;
+  setupCanvas();
+  bestScore = loadBestScore(key);
+};
+
+// 선택한 난이도로 모든 상태를 초기화하고 즉시 새 게임을 시작 (난이도 선택 / Retry 공통)
+const startGame = (key) => {
   clearTimeout(tickTimer);
-  snake = INITIAL_SNAKE.map(c => ({ ...c }));
+  applyLevel(key);
+  snake = createSnake();
   appliedDir = INITIAL_DIR;
   pendingDir = INITIAL_DIR;
   score = 0;
+  foodsEaten = 0;
   food = spawnFood();
   startTime = Date.now();
   endTime = null;
@@ -188,27 +207,36 @@ const startGame = () => {
   overlayEl.style.display = 'none';
   draw();
   updateHud();
-  tickTimer = setTimeout(tick, TICK_MS);
+  tickTimer = setTimeout(tick, config.tickMs);
 };
 
-// 시작 화면으로 복귀 (최고 점수는 유지)
+// 난이도 선택 화면을 보여준다 (고르면 해당 난이도로 게임 시작)
+const showSelect = () => {
+  state = 'select';
+  showOverlay('SELECT', '', DIFFICULTY_ORDER.map(key => [DIFFICULTY[key].label, () => startGame(key)]));
+};
+
+// 시작 화면으로 복귀 (기본 보드를 배경으로 두고 난이도는 다시 선택)
 const showStart = () => {
   clearTimeout(tickTimer);
   state = 'ready';
-  snake = INITIAL_SNAKE.map(c => ({ ...c }));
+  applyLevel(DEFAULT_LEVEL);
+  bestScore = null; // 난이도 선택 전이라 표시하지 않음
+  snake = createSnake();
   food = null;
   score = 0;
   startTime = Date.now();
   endTime = startTime;
   draw();
   updateHud();
-  showOverlay('SNAKE', '', [['Play', startGame]]);
+  showOverlay('SNAKE', '', [['Play', showSelect]]);
 };
 
-let state = 'ready'; // ready | playing | over
+let state = 'ready'; // ready | select | playing | over
 let tickTimer = null;
 let score = 0;
-let bestScore = loadBestScore(); // localStorage에서 복원
+let bestScore = null; // 현재 난이도의 최고 점수 (선택 전엔 null)
+let foodsEaten = 0; // 먹은 먹이 개수 (속도 단계 계산용)
 let startTime = Date.now();
 let endTime = Date.now();
 let food = null;
@@ -217,6 +245,5 @@ const bestEl = document.getElementById('best');
 const timeEl = document.getElementById('time');
 const overlayEl = document.getElementById('overlay');
 document.addEventListener('keydown', handleKey);
-setupCanvas();
 setInterval(updateHud, 250); // 틱 사이에도 시간 표시 갱신
 showStart();

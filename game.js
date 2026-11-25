@@ -8,6 +8,7 @@ const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순
 const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
 const FOODS_PER_SPEED_STEP = 5; // 속도가 한 단계 빨라지는 먹이 개수
 const INPUT_QUEUE_MAX = 2; // 틱 사이에 저장할 수 있는 방향 입력 개수
+const EARLY_TURN_RATIO = 0.5; // 조기 이동 시 직전 이동 후 최소로 기다릴 틱 간격 비율
 const SNAKE_START_LENGTH = 3;
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
@@ -71,7 +72,9 @@ const handleKey = (e) => {
   const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : appliedDir;
   const isSame = dir.x === last.x && dir.y === last.y;
   const isOpposite = dir.x === -last.x && dir.y === -last.y;
-  if (!isSame && !isOpposite) dirQueue.push(dir);
+  if (isSame || isOpposite) return;
+  dirQueue.push(dir);
+  advanceTick();
 };
 
 // 뱀이 차지하지 않은 빈 칸 중 무작위 위치를 반환 (빈 칸이 없으면 null)
@@ -177,12 +180,28 @@ const getTickMs = () =>
   Math.max(config.minTickMs,
     config.tickMs - config.tickStepMs * Math.floor(foodsEaten / FOODS_PER_SPEED_STEP));
 
+// 다음 틱을 delay(ms) 뒤로 예약 (기존 예약은 취소해 타이머가 항상 하나만 남게 함)
+const scheduleTick = (delay) => {
+  clearTimeout(tickTimer);
+  nextTickAt = Date.now() + delay;
+  tickTimer = setTimeout(tick, delay);
+};
+
+// 조기 이동: 직전 이동 후 틱 간격의 EARLY_TURN_RATIO가 지났다면 대기 중인 틱을 앞당김 (더 늦어지는 경우는 유지)
+const advanceTick = () => {
+  const now = Date.now();
+  const earliest = lastStepAt + getTickMs() * EARLY_TURN_RATIO;
+  const target = Math.max(now, earliest);
+  if (target < nextTickAt) scheduleTick(target - now);
+};
+
 // 틱 루프: setTimeout 재귀로 반복 (충돌하거나 칸이 가득 차면 종료)
 const tick = () => {
+  lastStepAt = Date.now();
   const alive = step();
   draw();
   updateHud();
-  if (alive && food) tickTimer = setTimeout(tick, getTickMs());
+  if (alive && food) scheduleTick(getTickMs());
   else endGame(alive);
 };
 
@@ -211,7 +230,8 @@ const startGame = (key) => {
   overlayEl.style.display = 'none';
   draw();
   updateHud();
-  tickTimer = setTimeout(tick, config.tickMs);
+  lastStepAt = Date.now();
+  scheduleTick(config.tickMs);
 };
 
 // 난이도 선택 화면을 보여준다 (고르면 해당 난이도로 게임 시작)
@@ -238,6 +258,8 @@ const showStart = () => {
 
 let state = 'ready'; // ready | select | playing | over
 let tickTimer = null;
+let lastStepAt = 0; // 직전 이동이 일어난 시각(ms)
+let nextTickAt = 0; // 다음 틱이 예약된 시각(ms)
 let score = 0;
 let bestScore = null; // 현재 난이도의 최고 점수 (선택 전엔 null)
 let foodsEaten = 0; // 먹은 먹이 개수 (속도 단계 계산용)

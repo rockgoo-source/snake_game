@@ -62,11 +62,25 @@ const draw = () => {
   });
 };
 
+// 대기 중 첫 방향 입력으로 출발: 시계를 시작하고 즉시 첫 틱 실행 (몸통이 있는 왼쪽 입력은 무시)
+const beginMoving = (dir) => {
+  if (dir.x === -INITIAL_DIR.x && dir.y === -INITIAL_DIR.y) return;
+  dirQueue = [dir];
+  state = 'playing';
+  startTime = Date.now();
+  endTime = null;
+  scheduleTick(0);
+};
+
 // 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향, 큐가 가득 찬 경우는 무시)
 const handleKey = (e) => {
   const dir = KEY_DIRS[e.code];
   if (!dir) return;
   e.preventDefault();
+  if (state === 'waiting') {
+    beginMoving(dir);
+    return;
+  }
   if (state !== 'playing') return;
   if (dirQueue.length >= INPUT_QUEUE_MAX) return;
   const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : appliedDir;
@@ -225,13 +239,11 @@ const startGame = (key) => {
   foodsEaten = 0;
   food = spawnFood();
   startTime = Date.now();
-  endTime = null;
-  state = 'playing';
+  endTime = startTime; // 첫 방향 입력 전까지 시간 정지
+  state = 'waiting';
   overlayEl.style.display = 'none';
   draw();
   updateHud();
-  lastStepAt = Date.now();
-  scheduleTick(config.tickMs);
 };
 
 // 난이도 선택 화면을 보여준다 (고르면 해당 난이도로 게임 시작)
@@ -256,7 +268,7 @@ const showStart = () => {
   showOverlay('SNAKE', '', [['Play', showSelect]]);
 };
 
-let state = 'ready'; // ready | select | playing | over
+let state = 'ready'; // ready | select | waiting | playing | over
 let tickTimer = null;
 let lastStepAt = 0; // 직전 이동이 일어난 시각(ms)
 let nextTickAt = 0; // 다음 틱이 예약된 시각(ms)

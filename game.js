@@ -7,6 +7,7 @@ const DIFFICULTY = {
 const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순서
 const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
 const FOODS_PER_SPEED_STEP = 5; // 속도가 한 단계 빨라지는 먹이 개수
+const INPUT_QUEUE_MAX = 2; // 틱 사이에 저장할 수 있는 방향 입력 개수
 const SNAKE_START_LENGTH = 3;
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
@@ -28,7 +29,7 @@ let config = DIFFICULTY[level]; // 현재 난이도 설정
 let boardSize = config.boardSize;
 let snake = [];
 let appliedDir = INITIAL_DIR; // 직전 틱에 실제 적용된 방향
-let pendingDir = INITIAL_DIR; // 다음 틱에 적용할 방향
+let dirQueue = []; // 다음 틱들에 차례로 적용할 방향 입력
 
 // 보드 중앙에서 오른쪽을 향하는 길이 3 뱀을 새로 만든다
 const createSnake = () => {
@@ -60,14 +61,17 @@ const draw = () => {
   });
 };
 
-// 방향 입력을 받아 유효하면 pendingDir에 저장 (반대 방향은 무시)
+// 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향, 큐가 가득 찬 경우는 무시)
 const handleKey = (e) => {
   const dir = KEY_DIRS[e.code];
   if (!dir) return;
   e.preventDefault();
   if (state !== 'playing') return;
-  const isOpposite = dir.x === -appliedDir.x && dir.y === -appliedDir.y;
-  if (!isOpposite) pendingDir = dir;
+  if (dirQueue.length >= INPUT_QUEUE_MAX) return;
+  const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : appliedDir;
+  const isSame = dir.x === last.x && dir.y === last.y;
+  const isOpposite = dir.x === -last.x && dir.y === -last.y;
+  if (!isSame && !isOpposite) dirQueue.push(dir);
 };
 
 // 뱀이 차지하지 않은 빈 칸 중 무작위 위치를 반환 (빈 칸이 없으면 null)
@@ -88,9 +92,9 @@ const isCollision = (newHead, eating) => {
   return body.some(c => c.x === newHead.x && c.y === newHead.y);
 };
 
-// 한 틱: 방향 확정 후 충돌이면 false, 아니면 이동(먹으면 꼬리 유지·난이도별 점수·새 먹이)하고 true
+// 한 틱: 큐에서 방향 하나를 꺼내 확정 후 충돌이면 false, 아니면 이동(먹으면 꼬리 유지·난이도별 점수·새 먹이)하고 true
 const step = () => {
-  appliedDir = pendingDir;
+  if (dirQueue.length) appliedDir = dirQueue.shift();
   const head = snake[0];
   const newHead = { x: head.x + appliedDir.x, y: head.y + appliedDir.y };
   const eating = !!food && newHead.x === food.x && newHead.y === food.y;
@@ -197,7 +201,7 @@ const startGame = (key) => {
   applyLevel(key);
   snake = createSnake();
   appliedDir = INITIAL_DIR;
-  pendingDir = INITIAL_DIR;
+  dirQueue = [];
   score = 0;
   foodsEaten = 0;
   food = spawnFood();

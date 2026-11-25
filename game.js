@@ -8,7 +8,7 @@ const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순
 const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
 const FOODS_PER_SPEED_STEP = 5; // 속도가 한 단계 빨라지는 먹이 개수
 const INPUT_QUEUE_MAX = 2; // 틱 사이에 저장할 수 있는 방향 입력 개수
-const EARLY_TURN_RATIO = 0.5; // 조기 이동 시 직전 이동 후 최소로 기다릴 틱 간격 비율
+const EARLY_TURN_RATIO = 0.5; // 조기 이동으로 정해진 틱 시각보다 앞당길 수 있는 최대 폭 (틱 간격 비율)
 const SNAKE_START_LENGTH = 3;
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
@@ -69,6 +69,7 @@ const beginMoving = (dir) => {
   state = 'playing';
   startTime = Date.now();
   endTime = null;
+  nextDueAt = startTime;
   scheduleTick(0);
 };
 
@@ -201,22 +202,28 @@ const scheduleTick = (delay) => {
   tickTimer = setTimeout(tick, delay);
 };
 
-// 조기 이동: 직전 이동 후 틱 간격의 EARLY_TURN_RATIO가 지났다면 대기 중인 틱을 앞당김 (더 늦어지는 경우는 유지)
+// 조기 이동: 정해진 틱 시각(nextDueAt)보다 최대 틱 간격의 EARLY_TURN_RATIO만큼 앞당김 (더 늦어지는 경우는 유지)
 const advanceTick = () => {
   const now = Date.now();
-  const earliest = lastStepAt + getTickMs() * EARLY_TURN_RATIO;
+  const earliest = nextDueAt - getTickMs() * EARLY_TURN_RATIO;
   const target = Math.max(now, earliest);
   if (target < nextTickAt) scheduleTick(target - now);
 };
 
-// 틱 루프: setTimeout 재귀로 반복 (충돌하거나 칸이 가득 차면 종료)
+// 틱 루프: 정해진 박자(nextDueAt)에 한 틱씩 소비하며 setTimeout 재귀로 반복 (앞당겨 실행해도 박자는 유지돼 평균 속도 불변)
 const tick = () => {
-  lastStepAt = Date.now();
   const alive = step();
   draw();
   updateHud();
-  if (alive && food) scheduleTick(getTickMs());
-  else endGame(alive);
+  if (!alive || !food) {
+    endGame(alive);
+    return;
+  }
+  const now = Date.now();
+  const tickMs = getTickMs();
+  nextDueAt += tickMs;
+  if (nextDueAt <= now) nextDueAt = now + tickMs; // 탭 지연 등으로 박자를 놓쳤으면 현재 기준으로 재정렬
+  scheduleTick(nextDueAt - now);
 };
 
 // 난이도를 적용한다 (보드 크기, 캔버스, 해당 난이도 최고 점수)
@@ -270,7 +277,7 @@ const showStart = () => {
 
 let state = 'ready'; // ready | select | waiting | playing | over
 let tickTimer = null;
-let lastStepAt = 0; // 직전 이동이 일어난 시각(ms)
+let nextDueAt = 0; // 다음 이동이 원래 일어나야 할 박자 시각(ms)
 let nextTickAt = 0; // 다음 틱이 예약된 시각(ms)
 let score = 0;
 let bestScore = null; // 현재 난이도의 최고 점수 (선택 전엔 null)

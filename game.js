@@ -7,7 +7,7 @@ const DIFFICULTY = {
 const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순서
 const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
 const FOODS_PER_SPEED_STEP = 5; // 속도가 한 단계 빨라지는 먹이 개수
-const INPUT_QUEUE_MAX = 2; // 틱 사이에 저장할 수 있는 방향 입력 개수
+const INPUT_QUEUE_MAX = 1; // 틱 사이에 저장할 수 있는 방향 입력 개수
 const EARLY_TURN_RATIO = 0.5; // 조기 이동으로 정해진 틱 시각보다 앞당길 수 있는 최대 폭 (틱 간격 비율)
 const SNAKE_START_LENGTH = 3;
 const INITIAL_DIR = { x: 1, y: 0 };
@@ -73,7 +73,7 @@ const beginMoving = (dir) => {
   scheduleTick(0);
 };
 
-// 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향, 큐가 가득 찬 경우는 무시)
+// 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향은 무시, 큐가 가득 차면 마지막 입력을 교체)
 const handleKey = (e) => {
   const dir = KEY_DIRS[e.code];
   if (!dir) return;
@@ -83,12 +83,18 @@ const handleKey = (e) => {
     return;
   }
   if (state !== 'playing') return;
-  if (dirQueue.length >= INPUT_QUEUE_MAX) return;
-  const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : appliedDir;
+  const full = dirQueue.length >= INPUT_QUEUE_MAX;
+  // 큐가 가득 차면 마지막 입력을 교체 대상으로 보고, 그 직전 방향 기준으로 유효성을 판단한다
+  const baseIdx = dirQueue.length - (full ? 2 : 1);
+  const last = baseIdx >= 0 ? dirQueue[baseIdx] : appliedDir;
   const isSame = dir.x === last.x && dir.y === last.y;
   const isOpposite = dir.x === -last.x && dir.y === -last.y;
   if (isSame || isOpposite) return;
-  dirQueue.push(dir);
+  if (full) {
+    dirQueue[dirQueue.length - 1] = dir;
+  } else {
+    dirQueue.push(dir);
+  }
   advanceTick();
 };
 

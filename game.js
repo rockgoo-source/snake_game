@@ -7,6 +7,8 @@ const DIFFICULTY = {
 const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순서
 const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
 const FOODS_PER_SPEED_STEP = 5; // 속도가 한 단계 빨라지는 먹이 개수
+const INPUT_QUEUE_MAX = 2; // 틱 사이에 저장할 수 있는 방향 입력 개수
+const EARLY_TURN_RATIO = 0.5; // 조기 이동으로 정해진 틱 시각보다 앞당길 수 있는 최대 폭 (틱 간격 비율)
 const SNAKE_START_LENGTH = 3;
 const INITIAL_DIR = { x: 1, y: 0 };
 const KEY_DIRS = {
@@ -28,7 +30,7 @@ let config = DIFFICULTY[level]; // 현재 난이도 설정
 let boardSize = config.boardSize;
 let snake = [];
 let appliedDir = INITIAL_DIR; // 직전 틱에 실제 적용된 방향
-let pendingDir = INITIAL_DIR; // 다음 틱에 적용할 방향
+let dirQueue = []; // 다음 틱들에 차례로 적용할 방향 입력
 
 // 보드 중앙에서 오른쪽을 향하는 길이 3 뱀을 새로 만든다
 const createSnake = () => {
@@ -60,14 +62,34 @@ const draw = () => {
   });
 };
 
-// 방향 입력을 받아 유효하면 pendingDir에 저장 (반대 방향은 무시)
+// 대기 중 첫 방향 입력으로 출발: 시계를 시작하고 즉시 첫 틱 실행 (몸통이 있는 왼쪽 입력은 무시)
+const beginMoving = (dir) => {
+  if (dir.x === -INITIAL_DIR.x && dir.y === -INITIAL_DIR.y) return;
+  dirQueue = [dir];
+  state = 'playing';
+  startTime = Date.now();
+  endTime = null;
+  nextDueAt = startTime;
+  scheduleTick(0);
+};
+
+// 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향, 큐가 가득 찬 경우는 무시)
 const handleKey = (e) => {
   const dir = KEY_DIRS[e.code];
   if (!dir) return;
   e.preventDefault();
+  if (state === 'waiting') {
+    beginMoving(dir);
+    return;
+  }
   if (state !== 'playing') return;
-  const isOpposite = dir.x === -appliedDir.x && dir.y === -appliedDir.y;
-  if (!isOpposite) pendingDir = dir;
+  if (dirQueue.length >= INPUT_QUEUE_MAX) return;
+  const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : appliedDir;
+  const isSame = dir.x === last.x && dir.y === last.y;
+  const isOpposite = dir.x === -last.x && dir.y === -last.y;
+  if (isSame || isOpposite) return;
+  dirQueue.push(dir);
+  advanceTick();
 };
 
 // 뱀이 차지하지 않은 빈 칸 중 무작위 위치를 반환 (빈 칸이 없으면 null)
@@ -88,9 +110,9 @@ const isCollision = (newHead, eating) => {
   return body.some(c => c.x === newHead.x && c.y === newHead.y);
 };
 
-// 한 틱: 방향 확정 후 충돌이면 false, 아니면 이동(먹으면 꼬리 유지·난이도별 점수·새 먹이)하고 true
+// 한 틱: 큐에서 방향 하나를 꺼내 확정 후 충돌이면 false, 아니면 이동(먹으면 꼬리 유지·난이도별 점수·새 먹이)하고 true
 const step = () => {
-  appliedDir = pendingDir;
+  if (dirQueue.length) appliedDir = dirQueue.shift();
   const head = snake[0];
   const newHead = { x: head.x + appliedDir.x, y: head.y + appliedDir.y };
   const eating = !!food && newHead.x === food.x && newHead.y === food.y;
@@ -173,13 +195,35 @@ const getTickMs = () =>
   Math.max(config.minTickMs,
     config.tickMs - config.tickStepMs * Math.floor(foodsEaten / FOODS_PER_SPEED_STEP));
 
-// 틱 루프: setTimeout 재귀로 반복 (충돌하거나 칸이 가득 차면 종료)
+// 다음 틱을 delay(ms) 뒤로 예약 (기존 예약은 취소해 타이머가 항상 하나만 남게 함)
+const scheduleTick = (delay) => {
+  clearTimeout(tickTimer);
+  nextTickAt = Date.now() + delay;
+  tickTimer = setTimeout(tick, delay);
+};
+
+// 조기 이동: 정해진 틱 시각(nextDueAt)보다 최대 틱 간격의 EARLY_TURN_RATIO만큼 앞당김 (더 늦어지는 경우는 유지)
+const advanceTick = () => {
+  const now = Date.now();
+  const earliest = nextDueAt - getTickMs() * EARLY_TURN_RATIO;
+  const target = Math.max(now, earliest);
+  if (target < nextTickAt) scheduleTick(target - now);
+};
+
+// 틱 루프: 정해진 박자(nextDueAt)에 한 틱씩 소비하며 setTimeout 재귀로 반복 (앞당겨 실행해도 박자는 유지돼 평균 속도 불변)
 const tick = () => {
   const alive = step();
   draw();
   updateHud();
-  if (alive && food) tickTimer = setTimeout(tick, getTickMs());
-  else endGame(alive);
+  if (!alive || !food) {
+    endGame(alive);
+    return;
+  }
+  const now = Date.now();
+  const tickMs = getTickMs();
+  nextDueAt += tickMs;
+  if (nextDueAt <= now) nextDueAt = now + tickMs; // 탭 지연 등으로 박자를 놓쳤으면 현재 기준으로 재정렬
+  scheduleTick(nextDueAt - now);
 };
 
 // 난이도를 적용한다 (보드 크기, 캔버스, 해당 난이도 최고 점수)
@@ -197,17 +241,16 @@ const startGame = (key) => {
   applyLevel(key);
   snake = createSnake();
   appliedDir = INITIAL_DIR;
-  pendingDir = INITIAL_DIR;
+  dirQueue = [];
   score = 0;
   foodsEaten = 0;
   food = spawnFood();
   startTime = Date.now();
-  endTime = null;
-  state = 'playing';
+  endTime = startTime; // 첫 방향 입력 전까지 시간 정지
+  state = 'waiting';
   overlayEl.style.display = 'none';
   draw();
   updateHud();
-  tickTimer = setTimeout(tick, config.tickMs);
 };
 
 // 난이도 선택 화면을 보여준다 (고르면 해당 난이도로 게임 시작)
@@ -232,8 +275,10 @@ const showStart = () => {
   showOverlay('SNAKE', '', [['Play', showSelect]]);
 };
 
-let state = 'ready'; // ready | select | playing | over
+let state = 'ready'; // ready | select | waiting | playing | over
 let tickTimer = null;
+let nextDueAt = 0; // 다음 이동이 원래 일어나야 할 박자 시각(ms)
+let nextTickAt = 0; // 다음 틱이 예약된 시각(ms)
 let score = 0;
 let bestScore = null; // 현재 난이도의 최고 점수 (선택 전엔 null)
 let foodsEaten = 0; // 먹은 먹이 개수 (속도 단계 계산용)

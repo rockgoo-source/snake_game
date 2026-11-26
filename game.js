@@ -2,7 +2,7 @@ const CELL_SIZE = 24;
 const DIFFICULTY = {
   easy: {
     label: 'Easy', boardSize: 6, tickMs: 250, tickStepMs: 5, minTickMs: 110, foodScore: 10, foodCount: 3,
-    timeFoodIntervalMs: 30000, timeFoodBatch: 1, timeFoodMax: 1, timeFoodMargin: 3, timeFoodSlowMs: 0
+    timeFoodIntervalMs: Infinity // 시간 먹이 없음
   },
   normal: {
     label: 'Normal', boardSize: 10, tickMs: 150, tickStepMs: 10, minTickMs: 60, foodScore: 15, foodCount: 3,

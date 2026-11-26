@@ -1,8 +1,8 @@
 const CELL_SIZE = 24;
 const DIFFICULTY = {
-  easy: { label: 'Easy', boardSize: 6, tickMs: 250, tickStepMs: 5, minTickMs: 110, foodScore: 10 },
-  normal: { label: 'Normal', boardSize: 10, tickMs: 150, tickStepMs: 10, minTickMs: 60, foodScore: 15 },
-  hard: { label: 'Hard', boardSize: 16, tickMs: 120, tickStepMs: 10, minTickMs: 50, foodScore: 20 }
+  easy: { label: 'Easy', boardSize: 6, tickMs: 250, tickStepMs: 5, minTickMs: 110, foodScore: 10, foodCount: 3 },
+  normal: { label: 'Normal', boardSize: 10, tickMs: 150, tickStepMs: 10, minTickMs: 60, foodScore: 15, foodCount: 3 },
+  hard: { label: 'Hard', boardSize: 16, tickMs: 120, tickStepMs: 10, minTickMs: 50, foodScore: 20, foodCount: 1 }
 };
 const DIFFICULTY_ORDER = ['easy', 'normal', 'hard']; // 선택 화면 버튼 순서
 const DEFAULT_LEVEL = 'normal'; // 시작 화면 배경 보드 기준
@@ -52,10 +52,10 @@ const setupCanvas = () => {
 // 먹이와 뱀을 화면에 그린다
 const draw = () => {
   ctx.clearRect(0, 0, boardSize * CELL_SIZE, boardSize * CELL_SIZE);
-  if (food) {
-    ctx.fillStyle = COLOR_FOOD;
-    ctx.fillRect(food.x * CELL_SIZE + 3, food.y * CELL_SIZE + 3, CELL_SIZE - 6, CELL_SIZE - 6);
-  }
+  ctx.fillStyle = COLOR_FOOD;
+  foods.forEach(f => {
+    ctx.fillRect(f.x * CELL_SIZE + 3, f.y * CELL_SIZE + 3, CELL_SIZE - 6, CELL_SIZE - 6);
+  });
   snake.forEach((c, i) => {
     ctx.fillStyle = i === 0 ? COLOR_HEAD : COLOR_BODY;
     ctx.fillRect(c.x * CELL_SIZE + 1, c.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
@@ -98,15 +98,25 @@ const handleKey = (e) => {
   advanceTick();
 };
 
-// 뱀이 차지하지 않은 빈 칸 중 무작위 위치를 반환 (빈 칸이 없으면 null)
+// 뱀과 기존 먹이가 차지하지 않은 빈 칸 중 무작위 위치를 반환 (빈 칸이 없으면 null)
 const spawnFood = () => {
+  const occupied = snake.concat(foods);
   const empty = [];
   for (let y = 0; y < boardSize; y++) {
     for (let x = 0; x < boardSize; x++) {
-      if (!snake.some(c => c.x === x && c.y === y)) empty.push({ x, y });
+      if (!occupied.some(c => c.x === x && c.y === y)) empty.push({ x, y });
     }
   }
   return empty.length ? empty[Math.floor(Math.random() * empty.length)] : null;
+};
+
+// 난이도별 기본 먹이 개수가 될 때까지 채운다 (빈 칸이 모자라면 있는 만큼만)
+const fillFoods = () => {
+  while (foods.length < config.foodCount) {
+    const cell = spawnFood();
+    if (!cell) break;
+    foods.push(cell);
+  }
 };
 
 // 새 머리 위치가 벽이거나 몸통이면 true (먹지 않는 틱엔 비워지는 꼬리 칸은 제외)
@@ -121,13 +131,15 @@ const step = () => {
   if (dirQueue.length) appliedDir = dirQueue.shift();
   const head = snake[0];
   const newHead = { x: head.x + appliedDir.x, y: head.y + appliedDir.y };
-  const eating = !!food && newHead.x === food.x && newHead.y === food.y;
+  const foodIndex = foods.findIndex(f => f.x === newHead.x && f.y === newHead.y);
+  const eating = foodIndex !== -1;
   if (isCollision(newHead, eating)) return false;
   snake.unshift(newHead);
   if (eating) {
     score += config.foodScore;
     foodsEaten++;
-    food = spawnFood();
+    foods.splice(foodIndex, 1);
+    fillFoods();
   } else {
     snake.pop();
   }
@@ -221,8 +233,9 @@ const tick = () => {
   const alive = step();
   draw();
   updateHud();
-  if (!alive || !food) {
-    endGame(alive);
+  const cleared = snake.length === boardSize * boardSize;
+  if (!alive || cleared) {
+    endGame(cleared);
     return;
   }
   const now = Date.now();
@@ -250,7 +263,8 @@ const startGame = (key) => {
   dirQueue = [];
   score = 0;
   foodsEaten = 0;
-  food = spawnFood();
+  foods = [];
+  fillFoods();
   startTime = Date.now();
   endTime = startTime; // 첫 방향 입력 전까지 시간 정지
   state = 'waiting';
@@ -272,7 +286,7 @@ const showStart = () => {
   applyLevel(DEFAULT_LEVEL);
   bestScore = null; // 난이도 선택 전이라 표시하지 않음
   snake = createSnake();
-  food = null;
+  foods = [];
   score = 0;
   startTime = Date.now();
   endTime = startTime;
@@ -290,7 +304,7 @@ let bestScore = null; // 현재 난이도의 최고 점수 (선택 전엔 null)
 let foodsEaten = 0; // 먹은 먹이 개수 (속도 단계 계산용)
 let startTime = Date.now();
 let endTime = Date.now();
-let food = null;
+let foods = []; // 보드에 놓인 먹이 위치 목록
 const scoreEl = document.getElementById('score');
 const bestEl = document.getElementById('best');
 const timeEl = document.getElementById('time');

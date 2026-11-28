@@ -33,6 +33,10 @@ const COLOR_HEAD = '#7f7';
 const COLOR_BODY = '#3a3';
 const COLOR_FOOD = '#f55';
 const COLOR_TIME_FOOD = '#fc3';
+const COLOR_EYE = '#000';
+const EYE_FORWARD = 5; // 머리 칸 중심에서 보는 방향으로 눈을 옮기는 거리(px)
+const EYE_SIDE = 5; // 보는 방향의 좌우로 두 눈을 벌리는 거리(px)
+const EYE_RADIUS = 3; // 눈 반지름(px)
 const BEST_SCORE_KEY_PREFIX = 'snakeBestScore_'; // 난이도별 키: 접두사 + 난이도
 
 const canvas = document.getElementById('board');
@@ -62,6 +66,19 @@ const setupCanvas = () => {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 };
 
+// 머리 칸에 dir 방향을 보는 눈 두 개를 그린다
+const drawEyes = (head, dir) => {
+  const centerX = head.x * CELL_SIZE + CELL_SIZE / 2 + dir.x * EYE_FORWARD;
+  const centerY = head.y * CELL_SIZE + CELL_SIZE / 2 + dir.y * EYE_FORWARD;
+  ctx.fillStyle = COLOR_EYE;
+  [-1, 1].forEach(side => {
+    ctx.beginPath();
+    // (-dir.y, dir.x)는 보는 방향에 수직인 벡터
+    ctx.arc(centerX - dir.y * EYE_SIDE * side, centerY + dir.x * EYE_SIDE * side, EYE_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+  });
+};
+
 // 먹이와 뱀을 화면에 그린다
 const draw = () => {
   ctx.clearRect(0, 0, boardSize * CELL_SIZE, boardSize * CELL_SIZE);
@@ -77,6 +94,7 @@ const draw = () => {
     ctx.fillStyle = i === 0 ? COLOR_HEAD : COLOR_BODY;
     ctx.fillRect(c.x * CELL_SIZE + 1, c.y * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
   });
+  drawEyes(snake[0], dirQueue[0] ?? appliedDir); // 대기 중인 입력이 있으면 미리 그쪽을 본다
 };
 
 // 대기 중 첫 방향 입력으로 출발: 시계를 시작하고 즉시 첫 틱 실행 (몸통이 있는 왼쪽 입력은 무시)
@@ -135,6 +153,7 @@ const handleKey = (e) => {
   } else {
     dirQueue.push(dir);
   }
+  draw(); // 틱을 기다리지 않고 눈 방향을 바로 갱신
   advanceTick();
 };
 
@@ -366,6 +385,8 @@ const showStart = () => {
   applyLevel(DEFAULT_LEVEL);
   bestScore = null; // 난이도 선택 전이라 표시하지 않음
   snake = createSnake();
+  appliedDir = INITIAL_DIR; // 지난 판의 눈 방향이 남지 않게 함
+  dirQueue = [];
   foods = [];
   timeFoods = [];
   score = 0;

@@ -44,7 +44,13 @@ canvas {
   font-size: 20px;
   cursor: pointer;
 }
-#overlay button:hover { background: #3a3; color: #000; }
+#overlay button { position: relative; }
+#overlay button.selected { border-color: #7f7; }
+/* 선택 표시 > < : absolute로 배치해 글자 위치가 밀리지 않게 함 */
+#overlay button.selected::before,
+#overlay button.selected::after { position: absolute; }
+#overlay button.selected::before { content: '>'; left: 12px; }
+#overlay button.selected::after { content: '<'; right: 12px; }
 #hud {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

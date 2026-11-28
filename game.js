@@ -26,6 +26,9 @@ const KEY_DIRS = {
   ArrowLeft: { x: -1, y: 0 }, KeyA: { x: -1, y: 0 },
   ArrowRight: { x: 1, y: 0 }, KeyD: { x: 1, y: 0 }
 };
+const MENU_STEP_KEYS = { ArrowUp: -1, KeyW: -1, ArrowDown: 1, KeyS: 1 }; // 메뉴 선택 이동 방향
+const MENU_CONFIRM_KEYS = ['Enter', 'NumpadEnter', 'Space'];
+const MENU_STATES = ['ready', 'select', 'over']; // 오버레이 버튼이 떠 있는 상태
 const COLOR_HEAD = '#7f7';
 const COLOR_BODY = '#3a3';
 const COLOR_FOOD = '#f55';
@@ -87,8 +90,31 @@ const beginMoving = (dir) => {
   scheduleTick(0);
 };
 
-// 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향은 무시, 큐가 가득 차면 마지막 입력을 교체)
+// 메뉴에서 선택 위치를 옮기고 선택 표시를 갱신 (범위를 넘으면 반대쪽으로 순환)
+const selectButton = (index) => {
+  selectedIndex = (index + menuButtons.length) % menuButtons.length;
+  menuButtons.forEach((b, i) => b.classList.toggle('selected', i === selectedIndex));
+};
+
+// 메뉴 키 처리: 위·아래로 선택을 옮기고 Enter/Space로 실행 (키 반복 실행은 무시)
+const handleMenuKey = (e) => {
+  const move = MENU_STEP_KEYS[e.code];
+  const confirm = MENU_CONFIRM_KEYS.includes(e.code);
+  if (!move && !confirm) return;
+  e.preventDefault(); // 페이지 스크롤과 포커스된 버튼의 중복 클릭 방지
+  if (move) {
+    selectButton(selectedIndex + move);
+  } else if (!e.repeat) {
+    menuButtons[selectedIndex].click();
+  }
+};
+
+// 방향 입력을 받아 큐의 마지막 방향 기준으로 유효하면 큐에 추가 (같은·반대 방향은 무시, 큐가 가득 차면 마지막 입력을 교체). 메뉴 화면에서는 메뉴 키로 처리
 const handleKey = (e) => {
+  if (MENU_STATES.includes(state)) {
+    handleMenuKey(e);
+    return;
+  }
   const dir = KEY_DIRS[e.code];
   if (!dir) return;
   e.preventDefault();
@@ -226,8 +252,8 @@ const updateHud = () => {
   timeEl.textContent = pad(Math.floor(sec / 60)) + ':' + pad(sec % 60);
 };
 
-// 오버레이에 제목·점수·버튼을 채워 보여준다 (buttons: [레이블, 핸들러] 배열)
-const showOverlay = (title, info, buttons) => {
+// 오버레이에 제목·점수·버튼을 채워 보여준다 (buttons: [레이블, 핸들러] 배열, defaultIndex: 처음 선택할 버튼)
+const showOverlay = (title, info, buttons, defaultIndex = 0) => {
   overlayEl.innerHTML = '';
   const h = document.createElement('div');
   h.className = 'title';
@@ -238,12 +264,15 @@ const showOverlay = (title, info, buttons) => {
     p.textContent = info;
     overlayEl.appendChild(p);
   }
-  buttons.forEach(([label, handler]) => {
+  menuButtons = buttons.map(([label, handler], i) => {
     const b = document.createElement('button');
     b.textContent = label;
     b.addEventListener('click', handler);
+    b.addEventListener('mouseenter', () => selectButton(i));
     overlayEl.appendChild(b);
+    return b;
   });
+  selectButton(defaultIndex);
   overlayEl.style.display = 'flex';
 };
 
@@ -326,7 +355,8 @@ const startGame = (key) => {
 // 난이도 선택 화면을 보여준다 (고르면 해당 난이도로 게임 시작)
 const showSelect = () => {
   state = 'select';
-  showOverlay('SELECT', '', DIFFICULTY_ORDER.map(key => [DIFFICULTY[key].label, () => startGame(key)]));
+  showOverlay('SELECT', '', DIFFICULTY_ORDER.map(key => [DIFFICULTY[key].label, () => startGame(key)]),
+    DIFFICULTY_ORDER.indexOf(DEFAULT_LEVEL));
 };
 
 // 시작 화면으로 복귀 (기본 보드를 배경으로 두고 난이도는 다시 선택)
@@ -348,6 +378,8 @@ const showStart = () => {
 
 let state = 'ready'; // ready | select | waiting | playing | over
 let tickTimer = null;
+let menuButtons = []; // 현재 오버레이의 버튼 목록
+let selectedIndex = 0; // 메뉴에서 선택된 버튼 위치
 let nextDueAt = 0; // 다음 이동이 원래 일어나야 할 박자 시각(ms)
 let nextTickAt = 0; // 다음 틱이 예약된 시각(ms)
 let score = 0;
